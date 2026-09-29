@@ -15,7 +15,9 @@ uniform float u_fade;
 uniform vec4 u_shots;
 uniform float u_glow;
 uniform float u_extent;
+uniform float u_cloud_size;
 uniform vec4 u_orbital;
+uniform vec4 u_orbital_kind;
 uniform vec4 u_shells;
 uniform vec3 u_p;
 uniform vec4 u_nucleus;
@@ -30,15 +32,21 @@ uniform vec4 u_pulse;
 uniform vec4 u_pulse_color;
 uniform vec3 u_pulse_anti;
 uniform vec4 u_spark;
-uniform vec4 u_tracks_a[3];
-uniform vec4 u_tracks_b[3];
-uniform vec4 u_track_colors[3];
+uniform vec4 u_tracks_a[4];
+uniform vec4 u_tracks_b[4];
+uniform vec4 u_track_colors[4];
+uniform vec4 u_waves[2];
+uniform vec3 u_wave_axes[2];
+uniform vec3 u_wave_colors[2];
 
 const float PI = 3.14159265;
 const int CLOUD_STEPS = 48;
 const int MAX_AFTERGLOW = 256;
 const float SHOT_PERIOD = 4096.0;
 const float DOT_GAIN = 3.0;
+const float HOT_SHOTS = 1.5;
+const float BLOOM_GAIN = 0.45;
+const vec3 HOT_COLOR = vec3(1.0, 0.72, 0.45);
 const float GLOW_GAIN = 1.0;
 const float GLOW_SCALE = 0.12;
 const float GLOW_FLOOR = 0.06;
@@ -98,15 +106,24 @@ vec3 raySegment(vec3 origin, vec3 dir, vec3 a, vec3 b) {
 
 #ifdef HAS_ELECTRONS
 #ifdef HAS_HYDROGEN
-float hydrogen(float index, vec3 p) {
+vec2 hydrogen(float index, float kind, vec3 p) {
     float r = length(p);
     if (index < 0.5)
-        return 0.5641896 * exp(-r);
+        return vec2(0.5641896 * exp(-r), 0.0);
+    if (kind < 0.5) {
+        if (index < 1.5)
+            return vec2(0.0997356 * p.y * exp(-r / 2.0), 0.0);
+        if (index < 2.5)
+            return vec2(0.0098505 * p.x * p.y * exp(-r / 3.0), 0.0);
+        return vec2(0.00063621 * p.x * p.y * p.z * exp(-r / 4.0), 0.0);
+    }
+    vec2 z = p.xy;
     if (index < 1.5)
-        return 0.0997356 * p.y * exp(-r / 2.0);
+        return 0.0705237 * z * exp(-r / 2.0);
+    vec2 z2 = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y);
     if (index < 2.5)
-        return 0.0098505 * p.x * p.y * exp(-r / 3.0);
-    return 0.00063621 * p.x * p.y * p.z * exp(-r / 4.0);
+        return 0.0034827 * z2 * exp(-r / 3.0);
+    return 0.0000918290 * vec2(z2.x * z.x - z2.y * z.y, z2.x * z.y + z2.y * z.x) * exp(-r / 4.0);
 }
 
 vec3 orbitalColor(float index) {
@@ -120,12 +137,16 @@ vec3 orbitalColor(float index) {
 }
 
 vec4 cloudAt(vec3 p) {
-    float a = hydrogen(u_orbital.x, p);
-    float b = hydrogen(u_orbital.y, p);
+    float scale = u_orbital_kind.w;
+    p /= scale;
+    vec2 a = hydrogen(u_orbital.x, u_orbital_kind.x, p);
+    vec2 b = hydrogen(u_orbital.y, u_orbital_kind.y, p);
     float w = u_orbital.z;
-    float pa = (1.0 - w) * a * a;
-    float pb = w * b * b;
-    float density = max(pa + pb + 2.0 * sqrt(w * (1.0 - w)) * a * b * cos(u_orbital.w), 0.0);
+    float pa = (1.0 - w) * dot(a, a);
+    float pb = w * dot(b, b);
+    vec2 overlap = vec2(a.x * b.x + a.y * b.y, a.x * b.y - a.y * b.x);
+    float interference = overlap.x * cos(u_orbital.w) + overlap.y * sin(u_orbital.w);
+    float density = max(pa + pb + 2.0 * sqrt(w * (1.0 - w)) * interference, 0.0) * u_orbital_kind.z / (scale * scale * scale);
     vec3 color = (pa * orbitalColor(u_orbital.x) + pb * orbitalColor(u_orbital.y)) / max(pa + pb, 1e-12);
     return vec4(color * density, density);
 }
@@ -170,20 +191,33 @@ bool shot(vec2 cell, float root, float index) {
         && hash13(vec3(cell + 41.0, index * 0.37 + 11.0)) < root;
 }
 
-float shots(vec2 cell, float probability) {
+vec3 shots(vec2 cell, float probability) {
     if (probability < 1e-7)
-        return 0.0;
+        return vec3(0.0);
     float root = pow(min(probability, 1.0), 1.0 / 3.0);
     float lit = 0.0;
+    float fresh = 0.0;
     for (int k = 0; k < MAX_AFTERGLOW; k++) {
         float age = float(k) + u_shots.y;
         if (age > u_shots.w * 4.0)
             break;
         float index = mod(u_shots.x - float(k), SHOT_PERIOD);
-        if (shot(cell, root, index))
-            lit = max(lit, exp(-age / u_shots.w));
+        float glow = exp(-age / u_shots.w);
+        if (glow > lit && shot(cell, root, index)) {
+            lit = glow;
+            fresh = exp(-age / HOT_SHOTS);
+        }
     }
-    return lit;
+    float bloom = 0.0;
+    for (int k = 0; k < 2; k++) {
+        float age = float(k) + u_shots.y;
+        float index = mod(u_shots.x - float(k), SHOT_PERIOD);
+        float heat = exp(-age / HOT_SHOTS);
+        if (shot(cell + vec2(1.0, 0.0), root, index) || shot(cell - vec2(1.0, 0.0), root, index)
+            || shot(cell + vec2(0.0, 1.0), root, index) || shot(cell - vec2(0.0, 1.0), root, index))
+            bloom = max(bloom, heat);
+    }
+    return vec3(lit, fresh, bloom);
 }
 #endif
 
@@ -194,6 +228,7 @@ vec3 nucleus(vec3 origin, vec3 dir, vec3 color, vec2 cells) {
         float nearest = 1e6;
         vec3 surface = vec3(0.0);
         vec3 normal = vec3(0.0);
+        float glint = 0.0;
         for (int i = 0; i < 20; i++) {
             if (float(i) >= u_nucleus.x)
                 break;
@@ -207,7 +242,10 @@ vec3 nucleus(vec3 origin, vec3 dir, vec3 color, vec2 cells) {
                 if (t > 0.0 && t < nearest) {
                     nearest = t;
                     normal = normalize(origin + dir * t - center);
-                    surface = mix(NEUTRON_COLOR, PROTON_COLOR, u_nucleons[i].w);
+                    float kind = u_nucleons[i].w;
+                    float proton = step(0.5, kind);
+                    glint = proton > 0.5 ? kind - 1.0 : -kind;
+                    surface = mix(NEUTRON_COLOR, PROTON_COLOR, proton);
                 }
             }
         }
@@ -215,7 +253,7 @@ vec3 nucleus(vec3 origin, vec3 dir, vec3 color, vec2 cells) {
             float light = 0.35 + 0.65 * max(dot(normal, normalize(-dir + vec3(0.3, 0.6, 0.0))), 0.0);
             float edge = max(1.0 - abs(dot(normal, dir)), 0.0);
             float rim = edge * edge * edge;
-            return surface * (light * 1.6 + rim * 0.8);
+            return mix(surface, vec3(1.0, 0.95, 0.8), 0.6 * glint) * (light * 1.6 + rim * 0.8) * (1.0 + 1.5 * glint);
         }
     }
     float r = length(cells);
@@ -308,7 +346,7 @@ vec3 nucleonInterior(vec3 origin, vec3 dir) {
 #ifdef HAS_TRACKS
 vec3 tracks(vec3 origin, vec3 dir) {
     vec3 color = vec3(0.0);
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         float brightness = u_tracks_b[i].w;
         if (brightness <= 0.0)
             continue;
@@ -331,6 +369,26 @@ vec3 tracks(vec3 origin, vec3 dir) {
             shape = pow(hit.y, 3.0) + exp(-(1.0 - hit.y) * span / (width * 2.5)) * 2.0;
         }
         color += u_track_colors[i].rgb * line * shape * brightness * 1.8;
+    }
+    return color;
+}
+#endif
+
+#ifdef HAS_WAVES
+vec3 waves(vec3 origin, vec3 dir) {
+    float closest = -dot(origin, dir);
+    vec3 near = origin + dir * max(closest, 0.0);
+    float impact = length(near);
+    vec3 normal = near / max(impact, 1e-6);
+    vec3 color = vec3(0.0);
+    for (int i = 0; i < 2; i++) {
+        vec4 wave = u_waves[i];
+        if (wave.z <= 0.0)
+            continue;
+        float ring = exp(-square((impact - wave.x) / wave.y));
+        float c = dot(normal, u_wave_axes[i]);
+        float pattern = wave.w < 0.5 ? 1.0 - c * c : wave.w < 1.5 ? 0.5 * (1.0 + c * c) : 1.0;
+        color += u_wave_colors[i] * ring * pattern * wave.z;
     }
     return color;
 }
@@ -359,9 +417,11 @@ vec4 renderPixel(vec2 st) {
     vec3 tint = density.w > 0.0 ? density.rgb / density.w : vec3(0.0);
     float cellWorld = 2.0 * u_fov * u_distance / u_cells.y;
     float cellArea = cellWorld * cellWorld * (u_resolution.x / u_cells.x) / (u_resolution.y / u_cells.y);
-    float lit = shots(cell, density.w * cellArea * u_shots.z);
-    color += tint * u_glow * GLOW_GAIN * max(1.0 - exp(-density.w * u_extent * u_extent * GLOW_SCALE) - GLOW_FLOOR, 0.0);
-    color += mix(tint, vec3(1.0), 0.35 * lit) * lit * DOT_GAIN;
+    vec3 hit = shots(cell, density.w * cellArea * u_shots.z);
+    vec3 hot = mix(HOT_COLOR, vec3(1.0), hit.y);
+    color += tint * u_glow * GLOW_GAIN * max(1.0 - exp(-density.w * u_cloud_size * u_cloud_size * GLOW_SCALE) - GLOW_FLOOR, 0.0);
+    color += mix(tint, hot, hit.y) * hit.x * DOT_GAIN * (1.0 + 1.2 * hit.y);
+    color += hot * hit.z * BLOOM_GAIN;
 #endif
 #ifdef HAS_NUCLEUS
     vec2 cellScale = vec2(u_cells.x / (2.0 * u_resolution.x / u_resolution.y), u_cells.y / 2.0);
@@ -372,6 +432,9 @@ vec4 renderPixel(vec2 st) {
 #endif
 #ifdef HAS_TRACKS
     color += tracks(origin, dir);
+#endif
+#ifdef HAS_WAVES
+    color += waves(origin, dir);
 #endif
     color *= u_fade;
     color = vec3(1.0) - exp(-color * u_exposure);

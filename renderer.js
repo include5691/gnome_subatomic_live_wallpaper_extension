@@ -21,6 +21,11 @@ const CELL_HEIGHT = 9;
 const SAMPLES_PER_CELL = 2;
 const TURN_RATE = 2 * Math.PI / 120;
 const FADE_TIME = 2.5;
+const DISTANCE_SMOOTHING = 0.9;
+const BREATH = 0.035;
+const BREATH_PERIOD = 12.8;
+const ROLL_DRIFT = 0.025;
+const ROLL_PERIOD = 16;
 const MAX_AFTERGLOW_SHOTS = 64;
 
 const SCENE_UNIFORMS = [
@@ -147,6 +152,7 @@ export const SubatomicContent = GObject.registerClass({
         this._sceneKey = sceneKey(options);
         this._scene = createScene(options);
         this._sceneAge = 0;
+        this._distance = 0;
     }
 
     setMonitor(monitor, scale) {
@@ -169,6 +175,7 @@ export const SubatomicContent = GObject.registerClass({
             this._sceneKey = sceneKey(options);
             this._scene = createScene(options);
             this._sceneAge = 0;
+            this._distance = 0;
         }
         if (resized)
             this._releaseTexture();
@@ -294,20 +301,26 @@ export const SubatomicContent = GObject.registerClass({
             this._scene.advance(dt * options.speed);
         if (still || options.speed === 0)
             this._scene.settle?.();
-        const scene = this._scene.state();
+        const scene = this._scene.state({turn: this._turn, distance: this._distance});
         this._updateCamera(dt);
         this._zoom = this._zoom
             ? this._zoom + (options.zoom - this._zoom) * (1 - Math.exp(-dt / ZOOM_SMOOTHING))
             : options.zoom;
+        this._distance = this._distance
+            ? Math.exp(Math.log(this._distance) + Math.log(scene.distance / this._distance) * (1 - Math.exp(-dt / DISTANCE_SMOOTHING)))
+            : scene.distance;
+        const drift = still ? 0 : 1;
+        const breath = 1 + BREATH * drift * Math.sin(this._time * 2 * Math.PI / BREATH_PERIOD);
+        const roll = options.tilt + ROLL_DRIFT * drift * Math.sin(this._time * 2 * Math.PI / ROLL_PERIOD);
 
         const target = this._scenePipelineFor();
         const {pipeline, uniforms} = target;
         const {columns, rows, cellWidth, cellHeight} = this._grid;
         pipeline.set_uniform_float(uniforms.u_resolution, 2, 1, [columns * cellWidth, rows * cellHeight]);
         pipeline.set_uniform_float(uniforms.u_cells, 2, 1, [columns, rows]);
-        pipeline.set_uniform_float(uniforms.u_camera, 3, 1, [this._camera.yaw, this._camera.pitch, options.tilt]);
+        pipeline.set_uniform_float(uniforms.u_camera, 3, 1, [this._camera.yaw, this._camera.pitch, roll]);
         pipeline.set_uniform_1f(uniforms.u_fov, FOV / this._zoom);
-        pipeline.set_uniform_1f(uniforms.u_distance, scene.distance);
+        pipeline.set_uniform_1f(uniforms.u_distance, this._distance * breath);
         pipeline.set_uniform_1f(uniforms.u_time, this._time);
         pipeline.set_uniform_1f(uniforms.u_exposure, options.exposure);
         pipeline.set_uniform_1f(uniforms.u_turn, this._turn);
@@ -316,7 +329,7 @@ export const SubatomicContent = GObject.registerClass({
             Math.floor(this._shots), this._shots % 1, options.atomsPerShot,
             clamp(options.afterglow * options.shotRate, 0.5, MAX_AFTERGLOW_SHOTS),
         ]);
-        pipeline.set_uniform_1f(uniforms.u_glow, options.cloudGlow);
+        pipeline.set_uniform_1f(uniforms.u_glow, options.cloudGlow * (scene.glow ?? 1));
         for (const [name, [size, values]] of Object.entries(scene.uniforms)) {
             uniforms[name] ??= pipeline.get_uniform_location(name);
             pipeline.set_uniform_float(uniforms[name], size, values.length / size, values);
