@@ -1,0 +1,10 @@
+{
+  "uuid": "subatomic-wallpaper@include5691.github.io",
+  "name": "Subatomic Wallpaper",
+  "description": "A live ASCII-art wallpaper of atoms and protons, rendered on the GPU. Electrons flash up as measured positions 30 times a second, and quarks trade color charge inside a proton. It turns to follow your cursor and also covers the lock screen.",
+  "shell-version": ["50"],
+  "session-modes": ["user", "unlock-dialog"],
+  "url": "https://github.com/include5691/gnome_subatomic_live_wallpaper_extension",
+  "settings-schema": "org.gnome.shell.extensions.subatomic-wallpaper",
+  "version-name": "0.1"
+}

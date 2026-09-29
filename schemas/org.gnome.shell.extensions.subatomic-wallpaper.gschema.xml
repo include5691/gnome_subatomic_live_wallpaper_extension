@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.subatomic-wallpaper" path="/org/gnome/shell/extensions/subatomic-wallpaper/">
+    <key name="scene" type="s">
+      <choices>
+        <choice value="hydrogen"/>
+        <choice value="atom"/>
+        <choice value="nucleon"/>
+      </choices>
+      <default>'hydrogen'</default>
+      <summary>Show a hydrogen atom, a light atom with its nucleus, or the quarks inside a nucleon</summary>
+    </key>
+    <key name="orbital" type="s">
+      <choices>
+        <choice value="1s"/>
+        <choice value="2p"/>
+        <choice value="3d"/>
+        <choice value="4f"/>
+      </choices>
+      <default>'3d'</default>
+      <summary>Hydrogen orbital shown while events are off</summary>
+    </key>
+    <key name="element" type="s">
+      <choices>
+        <choice value="helium"/>
+        <choice value="carbon"/>
+        <choice value="oxygen"/>
+        <choice value="neon"/>
+      </choices>
+      <default>'carbon'</default>
+      <summary>Element of the atom scene</summary>
+    </key>
+    <key name="nucleon" type="s">
+      <choices>
+        <choice value="proton"/>
+        <choice value="neutron"/>
+      </choices>
+      <default>'proton'</default>
+      <summary>Nucleon of the quark scene</summary>
+    </key>
+    <key name="events" type="b">
+      <default>true</default>
+      <summary>Play events: photon absorption and emission, X-ray fluorescence and deep inelastic scattering</summary>
+    </key>
+    <key name="speed" type="u">
+      <range min="0" max="400"/>
+      <default>100</default>
+      <summary>Speed of events and quark motion, in percent</summary>
+    </key>
+    <key name="shot-rate" type="u">
+      <range min="1" max="60"/>
+      <default>30</default>
+      <summary>Electron position measurements per second</summary>
+    </key>
+    <key name="atoms-per-shot" type="u">
+      <range min="1" max="40"/>
+      <default>2</default>
+      <summary>Copies of the atom measured in each shot</summary>
+    </key>
+    <key name="afterglow" type="u">
+      <range min="100" max="2000"/>
+      <default>700</default>
+      <summary>How long a measured electron keeps glowing, in milliseconds</summary>
+    </key>
+    <key name="cloud-glow" type="u">
+      <range min="0" max="100"/>
+      <default>30</default>
+      <summary>Brightness of the faint probability cloud behind the shots, in percent</summary>
+    </key>
+    <key name="rotation-speed" type="u">
+      <range min="0" max="400"/>
+      <default>100</default>
+      <summary>Speed at which the atom turns, in percent</summary>
+    </key>
+    <key name="char-size" type="u">
+      <range min="1" max="8"/>
+      <default>2</default>
+      <summary>Size of one font dot in screen pixels</summary>
+    </key>
+    <key name="fps" type="u">
+      <range min="5" max="60"/>
+      <default>30</default>
+      <summary>Frames rendered per second</summary>
+    </key>
+    <key name="pause-when-covered" type="b">
+      <default>true</default>
+      <summary>Pause the animation while a maximized or fullscreen window covers the monitor</summary>
+    </key>
+    <key name="follow-cursor" type="b">
+      <default>true</default>
+      <summary>Turn the camera toward the cursor</summary>
+    </key>
+    <key name="cursor-sensitivity" type="u">
+      <range min="0" max="200"/>
+      <default>50</default>
+      <summary>How far the camera turns when the cursor reaches the screen edge</summary>
+    </key>
+    <key name="cursor-smoothing" type="u">
+      <range min="0" max="100"/>
+      <default>30</default>
+      <summary>How slowly the camera follows the cursor</summary>
+    </key>
+    <key name="elevation" type="i">
+      <range min="-30" max="60"/>
+      <default>12</default>
+      <summary>Camera height in degrees</summary>
+    </key>
+    <key name="tilt" type="i">
+      <range min="-45" max="45"/>
+      <default>0</default>
+      <summary>Camera roll in degrees</summary>
+    </key>
+    <key name="zoom" type="u">
+      <range min="25" max="400"/>
+      <default>100</default>
+      <summary>Zoom in percent</summary>
+    </key>
+    <key name="brightness" type="u">
+      <range min="25" max="400"/>
+      <default>100</default>
+      <summary>Exposure in percent</summary>
+    </key>
+  </schema>
+</schemalist>
